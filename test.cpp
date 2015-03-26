@@ -85,14 +85,11 @@ struct Pins {
         } else {
             state_.fetch_and(~(1 << pin));
         }
-
-        //std::cout << "after set: " << (int)state_.load() << " should be " << (int)(uint8_t)(1 << pin) << " pin " << (int)pin << "\n";
     }
 
     void emit(uint8_t pin, std::vector<ValueTimePair> values)
     {
         for (auto& pair : values) {
-//            std::cout << " emit pin " << (int)pin <<  " value " << (int)pair.value << " \n";
             set(pin, pair.value);
             std::this_thread::sleep_for(std::chrono::milliseconds(pair.ms));
         }
@@ -132,14 +129,11 @@ void thread()
 
 } // namespace
 
-uint8_t pins()
-{
-    return g_pins.state_.load();
-}
+uint8_t systemSleep() {}
 
 uint8_t pin(uint8_t idx)
 {
-    return !!(pins() & (1 << idx));
+    return !!(g_pins.state_.load() & (1 << idx));
 }
 
 void setCounter(uint8_t number, uint32_t value)
@@ -147,8 +141,6 @@ void setCounter(uint8_t number, uint32_t value)
     std::cout << "Counter " << int(number) << " set to " << value << "\n";
     g_counters[number] = value;
 }
-
-void initialize() {}
 
 uint32_t millis()
 {
