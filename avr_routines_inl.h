@@ -4,6 +4,8 @@
 #include <avr/interrupt.h>
 #include <avr/sleep.h>
 
+namespace {
+
 void systemSleep()
 {
   // Disable ADC & comparator
@@ -28,8 +30,9 @@ uint8_t pin(uint8_t idx)
 
 void setCounter(uint8_t, uint32_t)
 {
-    digitalWrite(4, 1);
-    delay(1000);
-    digitalWrite(4, 0);        
+//    digitalWrite(4, 1);
+//    delay(1000);
+//    digitalWrite(4, 0);        
 }
 
+} // namespace

@@ -65,7 +65,7 @@ struct FilteredPin
             set_ = 0;
             candidate_ = value;
 
-            // subscribe to updates
+            // indicate that we should not go to sleep
             g_workers |= (1 << index_);
         }
     }
@@ -77,7 +77,7 @@ struct FilteredPin
             if (++set_ >= FILTER_DELTA_MS) {
                 last_ = candidate_;
 
-                // unsubscribe
+                // one more worker free -> way to shutdown mc
                 g_workers &= ~(1 << index_);
                 return true;
             }
@@ -90,6 +90,14 @@ struct Sensor
 {
     FilteredPin pin;
     uint32_t counter;
+
+    Sensor(uint8_t index) : pin(index), counter(0) {}
+
+    void inc()
+    {
+      counter++;
+      setCounter(pin.index_, counter);
+    }
 };
 
 void setup()
@@ -115,7 +123,9 @@ void loop()
 
                 for (auto& sensor : sensors) {
                     if (sensor.pin.check() && sensor.pin.get()) {
-                        sensor.counter++;
+
+                        // increment counter on accending signal
+                        sensor.inc();
                     }
                 }
             }

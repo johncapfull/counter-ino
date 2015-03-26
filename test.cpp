@@ -129,7 +129,7 @@ void thread()
 
 } // namespace
 
-uint8_t systemSleep() {}
+void systemSleep() {}
 
 uint8_t pin(uint8_t idx)
 {
