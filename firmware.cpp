@@ -12,26 +12,48 @@ namespace {
 
   const uint8_t FILTER_DELTA_MS = 15;
   
-  inline void initialize()
-  {
 #ifndef TEST
-      pinMode(PIN_LED, OUTPUT);
-      digitalWrite(PIN_LED, LOW); // main led off
+
+  void initialize()
+  {
+      const uint8_t input =  _BV(PIN_COUNTER0) | _BV(PIN_COUNTER1) | _BV(PIN_BUTTON);
+      const uint8_t output = _BV(PIN_LED);
+
+      // pin modes: 1 for output, 0 for input 
+      DDRB = output;
       
-      pinMode(PIN_COUNTER0, INPUT);
-      pinMode(PIN_COUNTER1, INPUT);
-      pinMode(PIN_BUTTON, INPUT);
-    
-      // enabling pull-up resistors
-      digitalWrite(PIN_COUNTER0, HIGH);
-      digitalWrite(PIN_COUNTER1, HIGH);
-      digitalWrite(PIN_BUTTON, HIGH);
-      
+      // enabling pull-up resistors (LED stay off because it's bit remains zero)
+      PORTB = input;
+
       GIMSK = 0b00100000;    // turns on pin change interrupts
-      PCMSK = 0b00000111;    // turn on interrupts on pins PB0, PB1, &amp; PB4
+      PCMSK = input;         // turn on interrupts on input pins
       sei();                 // enables interrupt
-#endif
   }
+  
+  ISR(PCINT0_vect)
+  {
+      // noop, just get up mc
+  }
+
+  uint8_t pin(uint8_t idx)
+  {
+    return !!(PINB & _BV(idx));
+  }
+  
+  void ledOn()
+  {
+    PORTB |= _BV(PIN_LED);
+  }
+
+  void ledOff()
+  {
+    PORTB &= ~_BV(PIN_LED);
+  }
+  
+  // only need for test
+  void setCounter(uint8_t, uint32_t) {}
+#endif // !TEST
+  
 
 }
 
@@ -45,7 +67,7 @@ struct FilteredPin
     uint8_t index_ : 2;
     uint8_t last_ : 1; 
     uint8_t candidate_ : 1;
-    uint8_t set_;// : 4; // up to 15
+    uint8_t set_ : 4; // up to 15
 
     // total members size: 8 bits    
     static_assert(FILTER_DELTA_MS < (1 << 4), "not enough bits to hold delta value");
@@ -86,28 +108,76 @@ struct FilteredPin
     }
 };
 
+// Sensor change handling. Changes is filtered by pin filter.
+
 struct Sensor
 {
     FilteredPin pin;
     uint32_t counter;
 
-    Sensor(uint8_t index) : pin(index), counter(0) {}
+    Sensor(uint8_t pinIndex) : pin(pinIndex), counter(0) {}
 
-    void inc()
+    void timer()
     {
-      counter++;
-      setCounter(pin.index_, counter);
+      if (pin.check() && pin.get()) {
+        // increment counter on accending signal
+        counter++;
+        setCounter(pin.index_, counter);
+      }
     }
 };
+
+// Data state rendering handling
+
+struct Renderer
+{
+  uint32_t start_;
+  uint8_t progress;
+  
+  union {
+    uint32_t l[2];
+    uint8_t b[8];
+  } data_;
+  
+  void run(uint32_t one, uint32_t two)
+  {
+    if (!progress) {
+      start_ = millis();
+      progress = 1;
+
+      data_.l[1] = one;
+      data_.l[2] = two;
+    }
+  }
+  
+  void finish()
+  {
+    progress = 0;
+  }
+  
+  void render()
+  {    
+    auto elasped = millis() - start_;
+    if (elasped <= 8 * 8) {
+      uint8_t state = (data_.b[elasped / 8] >> (elasped % 8)) & 1;
+      if (state) ledOn(); else ledOff();
+    } else {
+      finish();
+    }
+  }
+};
+
 
 void setup()
 {
     initialize();
 }
 
+
 void loop()
-{    
+{
     Sensor sensors[] = {PIN_COUNTER0, PIN_COUNTER1};
+    Renderer renderer;
 
     uint32_t start = millis();
     
@@ -115,19 +185,23 @@ void loop()
         for (auto& sensor : sensors) {
             sensor.pin.update();
         }
-            
-        if (g_workers) {
+        
+        if (pin(PIN_BUTTON)) {
+          renderer.run(sensors[1].counter, sensors[2].counter);
+        }
+        
+        if (g_workers | renderer.progress) {
             uint32_t time = millis();
             if (time - start > 0) {
                 start = time;
-
+                
                 for (auto& sensor : sensors) {
-                    if (sensor.pin.check() && sensor.pin.get()) {
-
-                        // increment counter on accending signal
-                        sensor.inc();
-                    }
+                  sensor.timer();
                 }
+            }
+            
+            if (renderer.progress) {
+               renderer.render();
             }
         } else {
             systemSleep();
